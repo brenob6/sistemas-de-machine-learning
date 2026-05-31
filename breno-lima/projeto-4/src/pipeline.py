@@ -2,7 +2,7 @@ import logging
 import os
 import re
 
-from src.scrapper import itausa
+from src.scrapper.factory import ScraperFactory
 from src.signature import hash
 from src.signature.registry import registry
 from src.extract import table
@@ -24,7 +24,8 @@ def parse_period_from_filename(filename: str) -> tuple[int, int] | None:
 
 def pipeline(company: str = "itausa", date: str | None = None):
     logger.info("Iniciando pipeline")
-    downloaded_files = itausa.extract_itausa_data(date=date)
+    scraper = ScraperFactory.create(company)
+    downloaded_files = scraper.scrap(date=date)
     if not downloaded_files:
         logger.warning("Nenhum arquivo baixado")
         return
