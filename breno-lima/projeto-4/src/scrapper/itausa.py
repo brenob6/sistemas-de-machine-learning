@@ -27,7 +27,7 @@ def block_resources(route: Route, request: Request):
         route.continue_()
 
 
-def extract_itausa_data():
+def extract_itausa_data(date: str | None = None) -> list[str] | None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
@@ -39,6 +39,25 @@ def extract_itausa_data():
         )
 
         page.goto(URL)
+
+        if date:
+            logging.info(f"Filtrando por data: {date}")
+            page.wait_for_selector("select#fano")
+            select_filter = page.query_selector("select#fano")
+            if not select_filter:
+                logging.info("Filtro de data não encontrado.")
+                return
+
+            page.wait_for_selector("table")
+            old_content = page.inner_text("table")
+
+            select_filter.select_option(label=date)
+
+            page.wait_for_function(
+                "(oldContent) => document.querySelector('table')?.innerText !== oldContent",
+                arg=old_content,
+                timeout=10000,
+            )
 
         page.wait_for_selector("table")
         table = page.query_selector("table")
@@ -56,9 +75,9 @@ def extract_itausa_data():
 
         downloaded_files: list[str] = []
         for link in links:
-            link.click()
-            download_event = page.wait_for_event("download")
-            file_path = on_download(download_event)
+            with page.expect_download() as download_info:
+                link.click()
+            file_path = on_download(download_info.value)
             downloaded_files.append(file_path)
 
         page.close()
