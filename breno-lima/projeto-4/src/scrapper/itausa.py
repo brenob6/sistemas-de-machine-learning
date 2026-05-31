@@ -1,13 +1,21 @@
-from playwright.sync_api import Request, Route, sync_playwright
+from playwright.sync_api import Download, Request, Route, sync_playwright
+import logging
+import os
+
+logging.basicConfig(level=logging.INFO)
 
 URL = "https://ri.itausa.com.br/informacoes-financeiras/central-de-resultados/"
 # URL = "https://sandbox.oxylabs.io/"
 
 
-def on_download(download, filename):
-    print(f"Download started: {filename}")
-    download.save_as(filename)
-    print(f"Download completed: {filename}")
+def on_download(download: Download) -> str:
+    DOWNLOAD_PATH = "process/"
+    os.makedirs(DOWNLOAD_PATH, exist_ok=True)
+    file_path = f"{DOWNLOAD_PATH}{download.suggested_filename}"
+    logging.info(f"Download started: {download.url}")
+    download.save_as(file_path)
+    logging.info(f"Download completed: {file_path}")
+    return file_path
 
 
 def block_resources(route: Route, request: Request):
@@ -27,7 +35,7 @@ def extract_itausa_data():
         page.route("**/*", block_resources)
         page.on(
             "download",
-            lambda download: on_download(download, filename="downloaded_file.pdf"),
+            lambda _: None,  # tratado manualmente no loop
         )
 
         page.goto(URL)
@@ -35,22 +43,24 @@ def extract_itausa_data():
         page.wait_for_selector("table")
         table = page.query_selector("table")
         if not table:
-            print("Tabela não encontrada.")
+            logging.info("Tabela não encontrada.")
             return
         rows = table.query_selector_all("tr")
         report_row = rows[1]
 
         links = report_row.query_selector_all("a")
         if not links:
-            print("Nenhum link encontrado na linha do relatório.")
+            logging.info("Nenhum link encontrado na linha do relatório.")
             return
+        logging.info(f"{len(links)} link(s) encontrado(s) na linha do relatório.")
 
+        downloaded_files: list[str] = []
         for link in links:
             link.click()
+            download_event = page.wait_for_event("download")
+            file_path = on_download(download_event)
+            downloaded_files.append(file_path)
 
-        page.wait_for_event("download")
-
+        page.close()
         browser.close()
-
-
-extract_itausa_data()
+        return downloaded_files
