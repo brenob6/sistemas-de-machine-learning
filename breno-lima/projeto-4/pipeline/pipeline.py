@@ -2,10 +2,11 @@ import logging
 import os
 import re
 
-from src.scrapper.factory import ScraperFactory
-from src.signature import hash
-from src.signature.registry import registry
-from src.extract import table
+import pymupdf4llm
+
+from scrapper.factory import ScraperFactory
+from signature import hash
+from signature.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +44,21 @@ def pipeline(company: str = "itausa", date: str | None = None):
         if period:
             quarter, year = period
             output_dir = os.path.join(OUTPUT_DIR, company, str(year))
-            output_csv = os.path.join(output_dir, f"Q{quarter}.csv")
+            output_md = os.path.join(output_dir, f"Q{quarter}.md")
         else:
             output_dir = os.path.join(OUTPUT_DIR, company)
             basename = os.path.splitext(os.path.basename(file))[0]
-            output_csv = os.path.join(output_dir, f"{basename}.csv")
+            output_md = os.path.join(output_dir, f"{basename}.md")
 
         os.makedirs(output_dir, exist_ok=True)
 
-        logger.info(f"[process] {file} → {output_csv} (hash: {file_hash[:8]}...)")
-        table.extract_tables_from_pdf(file, output_csv)
-        logger.info(f"Tabelas extraídas para {output_csv}")
+        logger.info(f"[process] {file} → {output_md} (hash: {file_hash[:8]}...)")
+        md_text = pymupdf4llm.to_markdown(doc=file)
 
-        registry.mark_as_processed(file_hash, {"file": file, "output": output_csv})
+        if isinstance(md_text, str):
+            open(output_md, "w", encoding="utf-8").write(md_text)
+
+        registry.mark_as_processed(file_hash, {"file": file, "output": output_md})
         registry.save_registry()
 
     logger.info("Pipeline concluído")

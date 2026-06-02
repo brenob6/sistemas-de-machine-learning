@@ -1,6 +1,8 @@
 services:
   api:
-    build: .
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
@@ -8,7 +10,7 @@ services:
 
   pipeline:
     build:
-      context: .
-      dockerfile: Dockerfile.pipeline
+      context: ./pipeline
+      dockerfile: Dockerfile
     volumes:
       - ./process:/app/process

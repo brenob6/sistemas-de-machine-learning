@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright
 import logging
 
-from src.scrapper.scrapper import Scraper
+from scrapper.scrapper import Scraper
 
 URL = "https://ri.itausa.com.br/informacoes-financeiras/central-de-resultados/"
 

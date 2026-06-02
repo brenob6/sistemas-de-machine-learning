@@ -1,8 +1,7 @@
 import logging
 import os
 import sys
-
-from src.extract import table
+import pymupdf4llm
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,11 +19,14 @@ def run_extract(pdf_path: str):
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     basename = os.path.splitext(os.path.basename(pdf_path))[0]
-    output_csv = os.path.join(OUTPUT_DIR, f"{basename}.csv")
+    output_md = os.path.join(OUTPUT_DIR, f"{basename}.csv")
 
     logger.info(f"Extraindo tabelas de: {pdf_path}")
-    table.extract_tables_from_pdf(pdf_path, output_csv)
-    logger.info(f"CSV gerado em: {output_csv}")
+    md_text = pymupdf4llm.to_markdown(doc=pdf_path)
+    if isinstance(md_text, str):
+        with open(output_md, "w", encoding="utf-8") as f:
+            f.write(md_text)
+        logger.info(f"Markdown gerado em: {output_md}")
 
 
 if __name__ == "__main__":
