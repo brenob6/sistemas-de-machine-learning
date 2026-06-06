@@ -22,7 +22,9 @@ class GeminiModel:
         response = client.models.generate_content(
             model="gemini-3-flash-preview",
             config=genai.types.GenerateContentConfig(
-                system_instruction=f"Your job are to analyze markdown tables and extract the information in a structured format. You should return the information in a JSON format, with the following structure:{self.semantic_structure.model_json_schema()}"
+                system_instruction=f"Your job are to analyze markdown tables and extract the information in a structured format. You should return the information in a JSON format, with the following structure:{self.semantic_structure.model_json_schema()}",
+                response_schema=ItausaContract,
+                response_mime_type="application/json",
             ),
             contents=contents,
         )
