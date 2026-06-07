@@ -1,15 +1,15 @@
 from functools import reduce
 import logging
-import os
 import re
+import db
 
 import pymupdf4llm
 
 from contracts.contract import ItausaContract
 from scrapper.factory import ScraperFactory
 from signature import hash
-from signature.registry import registry
 from model.gemini import geminiModel
+from storage.storage import storage
 
 logger = logging.getLogger(__name__)
 
@@ -45,59 +45,71 @@ def process_markdown(file: str):
         logger.warning(f"No structured data extracted from {file}")
         return
 
-    try:
-        ItausaContract.model_validate_json(structured_data)
-        with open(file.replace(".md", ".json"), "w", encoding="utf-8") as f:
-            f.write(structured_data)
-    except Exception as e:
-        logger.error(f"Validation error for {file}: {e}")
-        with open(file.replace(".md", ".error.json"), "w", encoding="utf-8") as f:
-            f.write(structured_data)
 
+class Pipeline:
+    def run(self):
+        downloaded_files = self.scrap()
+        if not downloaded_files:
+            logger.info("Nenhum arquivo baixado")
+            return
+        for file in downloaded_files:
+            self.Process(file).run()
 
-def pdf_to_markdown(file: str, company: str) -> str | None:
-    file_hash = hash.get_file_hash(file)
+    def scrap(self, company: str = "itausa", date: str | None = None):
+        logger.info("Iniciando pipeline")
+        scraper = ScraperFactory.create(company)
+        return scraper.scrap(date=date)
 
-    if registry.is_already_processed(file_hash):
-        logger.info(f"[skip] {file} já processado (hash: {file_hash[:8]}...)")
-        return
+    class Process:
+        def __init__(self, filepath: str):
+            self.filepath = filepath
+            self.file_hash = hash.get_file_hash(filepath)
+            self.file_content = None
 
-    period = parse_period_from_filename(os.path.basename(file))
-    if period:
-        quarter, year = period
-        output_dir = os.path.join(OUTPUT_DIR, company, str(year))
-        output_md = os.path.join(output_dir, f"Q{quarter}.md")
-    else:
-        output_dir = os.path.join(OUTPUT_DIR, company)
-        basename = os.path.splitext(os.path.basename(file))[0]
-        output_md = os.path.join(output_dir, f"{basename}.md")
+        def run(self):
+            if db.exists(sha256=self.file_hash):
+                logger.info(f"Arquivo {self.filepath} já processado, pulando.")
+                return
+            self.to_markdown()
+            self.extract_json()
 
-    os.makedirs(output_dir, exist_ok=True)
+        def to_markdown(self):
+            md_text = pymupdf4llm.to_markdown(doc=self.filepath)
+            if isinstance(md_text, str):
+                storage.upload_processed(md_text)
+                self.file_content = md_text
 
-    logger.info(f"[process] {file} → {output_md} (hash: {file_hash[:8]}...)")
-    md_text = pymupdf4llm.to_markdown(doc=file)
+        def extract_json(self):
+            if not self.file_content:
+                logger.warning(f"No markdown content to process for {self.filepath}")
+                return
 
-    if isinstance(md_text, str):
-        open(output_md, "w", encoding="utf-8").write(md_text)
+            table = extract_tables_from_markdown(self.file_content)
+            logger.info(f"Processing table from {self.filepath}:\n{table}\n")
 
-    registry.mark_as_processed(file_hash, {"file": file, "output": output_md})
-    registry.save_registry()
-    return output_md
+            structured_data = geminiModel.prompt(table)
+            logger.info(f"Structured data:\n{structured_data}\n")
+            if not structured_data:
+                logger.warning(f"No structured data extracted from {self.filepath}")
+                return
 
+            try:
+                ItausaContract.model_validate_json(structured_data)
+                # storage.upload_extracted(structured_data, self.file_hash)
+                db.save_document(
+                    sha256=self.file_hash,
+                    company="itausa",
+                    document_type="administrative_report",
+                    content=structured_data,
+                    is_valid=True,
+                )
 
-def pipeline(company: str = "itausa", date: str | None = None):
-    logger.info("Iniciando pipeline")
-    scraper = ScraperFactory.create(company)
-    downloaded_files = scraper.scrap(date=date)
-    if not downloaded_files:
-        logger.warning("Nenhum arquivo baixado")
-        return
-
-    logger.info(f"{len(downloaded_files)} arquivo(s) baixado(s)")
-
-    for file in downloaded_files:
-        markdown_file = pdf_to_markdown(file, company)
-        if markdown_file:
-            process_markdown(markdown_file)
-
-    logger.info("Pipeline concluído")
+            except Exception:
+                # storage.upload_extracted(structured_data, self.file_hash)
+                db.save_document(
+                    sha256=self.file_hash,
+                    company="itausa",
+                    document_type="administrative_report",
+                    content=structured_data,
+                    is_valid=False,
+                )

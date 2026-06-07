@@ -1,4 +1,22 @@
 services:
+  storage:
+    image: rustfs/rustfs:latest
+    ports:
+      - "9001:9001"
+    volumes:
+      - rustfs_data:/data
+
+  mongo:
+    image: mongo
+
+  mongo-express:
+    image: mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_BASICAUTH=false
+
   api:
     build:
       context: ./api
@@ -14,3 +32,6 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./process:/app/process
+
+volumes:
+  rustfs_data:
