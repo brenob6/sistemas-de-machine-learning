@@ -27,5 +27,8 @@ class ResultadoIndividualContract(BaseModel):
 
 
 class ItausaContract(BaseModel):
+    def __init__(self, **data):
+        super().__init__(**data)
+
     indicadores: IndicadoresContract
     resultado_individual: ResultadoIndividualContract

@@ -1,14 +1,15 @@
 from functools import reduce
 import logging
 import re
+
+from pydantic import BaseModel
 import db
 
 import pymupdf4llm
 
-from contracts.contract import ItausaContract
-from scrapper.factory import ScraperFactory
+from model.gemini import GeminiModel
+from scrapper.scrapper import Scraper
 from signature import hash
-from model.gemini import geminiModel
 from storage.storage import storage
 
 logger = logging.getLogger(__name__)
@@ -33,38 +34,35 @@ def extract_tables_from_markdown(md_text: str) -> str:
     return reduce(lambda acc, table: acc + f"\n{table}\n", tables, "")
 
 
-def process_markdown(file: str):
-    md_text = open(file, "r", encoding="utf-8").read()
-    table = extract_tables_from_markdown(md_text)
-
-    logger.info(f"Processing table from {file}:\n{table}\n")
-    structured_data = geminiModel.prompt(table)
-    logger.info(f"Structured data:\n{structured_data}\n")
-
-    if not structured_data:
-        logger.warning(f"No structured data extracted from {file}")
-        return
-
-
 class Pipeline:
+    def __init__(self, scraper: Scraper, contract: type[BaseModel], company: str):
+        self.scraper = scraper
+        self.contract = contract
+        self.company = company
+        self.geminiModel = GeminiModel(contract)
+
     def run(self):
-        downloaded_files = self.scrap()
+        downloaded_files = self.scraper.scrap()
         if not downloaded_files:
             logger.info("Nenhum arquivo baixado")
             return
         for file in downloaded_files:
-            self.Process(file).run()
-
-    def scrap(self, company: str = "itausa", date: str | None = None):
-        logger.info("Iniciando pipeline")
-        scraper = ScraperFactory.create(company)
-        return scraper.scrap(date=date)
+            self.Process(file, self.contract, self.company, self.geminiModel).run()
 
     class Process:
-        def __init__(self, filepath: str):
+        def __init__(
+            self,
+            filepath: str,
+            contract: type[BaseModel],
+            company: str,
+            geminiModel: GeminiModel,
+        ):
             self.filepath = filepath
             self.file_hash = hash.get_file_hash(filepath)
             self.file_content = None
+            self.contract = contract
+            self.company = company
+            self.geminiModel = geminiModel
 
         def run(self):
             if db.exists(sha256=self.file_hash):
@@ -87,18 +85,18 @@ class Pipeline:
             table = extract_tables_from_markdown(self.file_content)
             logger.info(f"Processing table from {self.filepath}:\n{table}\n")
 
-            structured_data = geminiModel.prompt(table)
+            structured_data = self.geminiModel.prompt(table)
             logger.info(f"Structured data:\n{structured_data}\n")
             if not structured_data:
                 logger.warning(f"No structured data extracted from {self.filepath}")
                 return
 
             try:
-                ItausaContract.model_validate_json(structured_data)
+                self.contract.model_validate_json(structured_data)
                 # storage.upload_extracted(structured_data, self.file_hash)
                 db.save_document(
                     sha256=self.file_hash,
-                    company="itausa",
+                    company=self.company,
                     document_type="administrative_report",
                     content=structured_data,
                     is_valid=True,
@@ -108,7 +106,7 @@ class Pipeline:
                 # storage.upload_extracted(structured_data, self.file_hash)
                 db.save_document(
                     sha256=self.file_hash,
-                    company="itausa",
+                    company=self.company,
                     document_type="administrative_report",
                     content=structured_data,
                     is_valid=False,
