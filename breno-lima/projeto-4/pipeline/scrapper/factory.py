@@ -1,4 +1,6 @@
 from scrapper.scrapper import Scraper
+from scrapper.itausa import ItausaScraper
+from scrapper.mrv import MRVScraper
 
 
 class ScraperFactory:
@@ -18,7 +20,5 @@ class ScraperFactory:
         return cls._registry[name]()
 
 
-# Registro dos scrapers disponíveis
-from scrapper.itausa import ItausaScraper  # noqa: E402
-
 ScraperFactory.register("itausa", ItausaScraper)
+ScraperFactory.register("mrv", MRVScraper)

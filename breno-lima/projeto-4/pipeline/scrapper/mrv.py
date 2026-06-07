@@ -1,12 +1,11 @@
-from playwright.sync_api import sync_playwright
 import logging
-
+from playwright.sync_api import sync_playwright
 from scrapper.scrapper import Scraper
 
-URL = "https://ri.itausa.com.br/informacoes-financeiras/central-de-resultados/"
+URL = "https://ri.mrv.com.br/informacoes-financeiras/central-de-resultados/"
 
 
-class ItausaScraper(Scraper):
+class MRVScraper(Scraper):
     def __init__(self):
         super().__init__(URL)
 
@@ -20,23 +19,7 @@ class ItausaScraper(Scraper):
             page.goto(self.url)
 
             if date:
-                logging.info(f"Filtrando por data: {date}")
-                page.wait_for_selector("select#fano")
-                select_filter = page.query_selector("select#fano")
-                if not select_filter:
-                    logging.info("Filtro de data não encontrado.")
-                    return None
-
-                page.wait_for_selector("table")
-                old_content = page.inner_text("table")
-
-                select_filter.select_option(label=date)
-
-                page.wait_for_function(
-                    "(oldContent) => document.querySelector('table')?.innerText !== oldContent",
-                    arg=old_content,
-                    timeout=10000,
-                )
+                pass
 
             page.wait_for_selector("table")
             table = page.query_selector("table")
@@ -44,16 +27,19 @@ class ItausaScraper(Scraper):
                 logging.info("Tabela não encontrada.")
                 return None
 
-            rows = table.query_selector_all("tr")
-            report_row = rows[1]
+            row = table.query_selector("tr:nth-child(2)")
+            if not row:
+                logging.info("Linha do relatório não encontrada.")
+                return None
 
-            links = report_row.query_selector_all("a")
+            links = row.query_selector_all("a")
             if not links:
                 logging.info("Nenhum link encontrado na linha do relatório.")
                 return None
-            logging.info(f"{len(links)} link(s) encontrado(s) na linha do relatório.")
 
+            logging.info(f"{len(links)} link(s) encontrado(s) na linha do relatório.")
             downloaded_files: list[str] = []
+
             for link in links:
                 with page.expect_download() as download_info:
                     link.click()
